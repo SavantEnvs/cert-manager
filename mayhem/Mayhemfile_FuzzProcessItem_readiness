@@ -1,0 +1,8 @@
+project: savantenvs/cert-manager
+target: FuzzProcessItem_readiness
+cmds:
+  - cmd: /mayhem/FuzzProcessItem_readiness
+    libfuzzer: true
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
+  - file://mayhem/FuzzProcessItem_readiness/testsuite

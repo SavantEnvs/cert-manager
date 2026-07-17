@@ -1,0 +1,8 @@
+project: savantenvs/cert-manager
+target: FuzzVaultCRController
+cmds:
+  - cmd: /mayhem/FuzzVaultCRController
+    libfuzzer: true
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
+  - file://mayhem/FuzzVaultCRController/testsuite

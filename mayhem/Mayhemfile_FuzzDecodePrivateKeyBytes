@@ -1,0 +1,8 @@
+project: savantenvs/cert-manager
+target: FuzzDecodePrivateKeyBytes
+cmds:
+  - cmd: /mayhem/FuzzDecodePrivateKeyBytes
+    libfuzzer: true
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
+  - file://mayhem/FuzzDecodePrivateKeyBytes/testsuite
