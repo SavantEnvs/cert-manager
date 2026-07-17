@@ -1,0 +1,8 @@
+project: savantenvs/cert-manager
+target: FuzzValidate_approval
+cmds:
+  - cmd: /mayhem/FuzzValidate_approval
+    libfuzzer: true
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
+  - file://mayhem/FuzzValidate_approval/testsuite
