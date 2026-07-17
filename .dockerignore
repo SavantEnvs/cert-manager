@@ -1,0 +1,18 @@
+# .dockerignore for the commit-image build.
+# Goal: bake in the FULL repo (including .git history — the grader uses it),
+# dropping only local build artifacts and editor/OS cruft. Dev image, not minimal.
+
+# ── cert-manager's own build outputs (see .gitignore) ───────────────────────
+/acmesolver
+/controller
+/ingress-shim
+/ctl
+bin/
+_bin/
+.bin/
+_artifacts/
+
+# ── Editor / OS noise ────────────────────────────────────────────────────────
+.DS_Store
+*.swp
+*~
