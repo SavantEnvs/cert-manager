@@ -1,0 +1,118 @@
+package issuing
+
+import (
+	"testing"
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+
+	cmapiv1 "github.com/cert-manager/cert-manager/pkg/apis/certmanager/v1"
+	cmmeta "github.com/cert-manager/cert-manager/pkg/apis/meta/v1"
+	testpkg "github.com/cert-manager/cert-manager/pkg/controller/test"
+	"github.com/cert-manager/cert-manager/test/unit/gen"
+)
+
+// FuzzProcessItemCR drives ProcessItem() down to the CertificateRequest state machine: a
+// valid Issuing Certificate, its next private key and a CertificateRequest for the next
+// revision whose status (failure time, conditions) and revision annotation come from the input.
+//
+// data[0]: bit0 FailureTime set, bit1 FailureTime before the Issuing condition (else after),
+// bits2-3 number of conditions (0-3), bit4 revision annotation "2" (the next revision; else "1").
+// Then 3 bytes per condition: type, status, reason.
+func FuzzProcessItemCR(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) < 1 {
+			return
+		}
+		flags := data[0]
+		rest := data[1:]
+
+		condTypes := []cmapiv1.CertificateRequestConditionType{
+			cmapiv1.CertificateRequestConditionReady,
+			cmapiv1.CertificateRequestConditionApproved,
+			cmapiv1.CertificateRequestConditionDenied,
+			cmapiv1.CertificateRequestConditionInvalidRequest,
+		}
+		condStatuses := []cmmeta.ConditionStatus{cmmeta.ConditionTrue, cmmeta.ConditionFalse, cmmeta.ConditionUnknown}
+		condReasons := []string{
+			cmapiv1.CertificateRequestReasonFailed,
+			cmapiv1.CertificateRequestReasonIssued,
+			cmapiv1.CertificateRequestReasonPending,
+			"",
+		}
+
+		revision := "1"
+		if flags&0x10 != 0 {
+			revision = "2"
+		}
+		mods := []gen.CertificateRequestModifier{
+			func(cr *cmapiv1.CertificateRequest) { cr.Status.Conditions = nil },
+			gen.AddCertificateRequestAnnotations(map[string]string{
+				cmapiv1.CertificateRequestRevisionAnnotationKey: revision,
+			}),
+		}
+		if flags&0x01 != 0 {
+			ft := fixedClockStart.Add(-time.Hour)
+			if flags&0x02 == 0 {
+				ft = fixedClockStart.Add(time.Hour)
+			}
+			mods = append(mods, gen.SetCertificateRequestFailureTime(metav1.Time{Time: ft}))
+		}
+		for i := 0; i < int(flags>>2&0x3) && len(rest) >= 3; i++ {
+			mods = append(mods, gen.SetCertificateRequestStatusCondition(cmapiv1.CertificateRequestCondition{
+				Type:   condTypes[int(rest[0])%len(condTypes)],
+				Status: condStatuses[int(rest[1])%len(condStatuses)],
+				Reason: condReasons[int(rest[2])%len(condReasons)],
+			}))
+			rest = rest[3:]
+		}
+
+		metaFixedClockStart := metav1.NewTime(fixedClockStart)
+		issuingCert := gen.CertificateFrom(baseCert.DeepCopy(),
+			gen.SetCertificateStatusCondition(cmapiv1.CertificateCondition{
+				Type:               cmapiv1.CertificateConditionIssuing,
+				Status:             cmmeta.ConditionTrue,
+				ObservedGeneration: 3,
+				LastTransitionTime: &metaFixedClockStart,
+			}),
+		)
+
+		builder := &testpkg.Builder{
+			CertManagerObjects: []runtime.Object{
+				issuingCert,
+				gen.CertificateRequestFrom(fuzzBundle.CertificateRequest, mods...),
+			},
+			KubeObjects: []runtime.Object{
+				&corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "next-private-key",
+						Namespace: fuzzBundle.Certificate.Namespace,
+					},
+					Data: map[string][]byte{
+						corev1.TLSPrivateKeyKey: fuzzBundle.PrivateKeyBytes,
+					},
+				},
+			},
+		}
+		fixedClock.SetTime(fixedClockStart)
+		builder.Clock = fixedClock
+		builder.T = t
+		builder.InitWithRESTConfig()
+		builder.Start()
+		defer builder.Stop()
+
+		w := controllerWrapper{}
+		if _, _, err := w.Register(builder.Context); err != nil {
+			panic(err)
+		}
+		w.controller.localTemporarySigner = testLocalTemporarySignerFn(fuzzBundle.LocalTemporaryCertificateBytes)
+
+		_ = w.controller.ProcessItem(t.Context(), types.NamespacedName{
+			Namespace: issuingCert.Namespace,
+			Name:      issuingCert.Name,
+		})
+	})
+}

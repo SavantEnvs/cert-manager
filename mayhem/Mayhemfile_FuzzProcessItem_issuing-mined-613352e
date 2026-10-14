@@ -1,0 +1,8 @@
+project: savantenvs/cert-manager
+target: FuzzProcessItem_issuing-mined-613352e
+cmds:
+  - cmd: /mayhem/FuzzProcessItem_issuing-mined-613352e
+    libfuzzer: true
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
+  - file://mayhem/FuzzProcessItem_issuing-mined-613352e/testsuite
